@@ -1,9 +1,13 @@
 import argparse
+import base64
 import json
 import os
 import random
 import readline
 import requests
+import signal
+import subprocess
+import time
 import urllib.parse
 
 class CmdRunnerException(Exception):
@@ -82,13 +86,31 @@ class CmdBase:
 
 
 class CmdRunner(CmdBase):
+    default_args = {
+        "timeout" : 30
+    }
+
     def run(self, cmd):
         """
-        Simple CmdRunner which just prints the command.
+        Simple CmdRunner which just executes the command.
         """
-        return cmd
+        starttime = time.time()
+        proc = subprocess.Popen(["/bin/bash", "-c", cmd], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, preexec_fn=os.setsid)
+        while proc.poll() is None:
+            if self.timeout is not None and time.time() - starttime > self.timeout:
+                print("[!] Command timed out")
+                os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+            time.sleep(0.2)
+        return proc.communicate()[0].decode()
 
     def encode(self, cmd):
+        return cmd
+
+class EchoRunner(CmdRunner):
+    def run(seld, cmd):
+        """
+        Simple CmdRunner which just echos the command.
+        """
         return cmd
 
 class WebRunner(CmdRunner):
@@ -116,6 +138,42 @@ class CmdEncoder(CmdBase):
         """
         return cmd
 
+    def ready(self, index, encoders):
+        pass
+
+class SSHEncoder(CmdEncoder):
+    help = """
+    SSH encoder.
+    """
+    args = ("username", "host")
+    default_args = {
+        "identity" : None
+    }
+
+    def encode(self, cmd):
+        cmd = cmd.replace("\\", "\\\\").replace("\"", "\\\"")
+        ssh_options = []
+        if self.identity is not None:
+            ssh_options.append("-i {}".format(self.identity))
+        ssh_options.append("-o \"StrictHostKeyChecking no\"")
+        ssh_options.append("-o \"UserKnownHostsFile /dev/null\"")
+        ssh_options = " ".join(ssh_options)
+        return "ssh {} {}@{} \"{}\"".format(ssh_options, self.username, self.host, cmd)
+
+class CurlEncoder(CmdEncoder):
+    help = """
+    Curl encoder.
+    """
+    args = ("url", "data")
+    default_args = {
+        "replace" : "***"
+    }
+
+    def encode(self, cmd):
+        cmd = urllib.parse.quote_plus(cmd)
+        data = self.data.replace(self.replace, cmd)
+        return "curl -s -k  -X POST --data-binary \"{}\" \"{}\"".format(data, self.url)
+
 class XpCmdShellEncoder(CmdEncoder):
     help = """
     XpCmdShell encoder.
@@ -127,7 +185,7 @@ class XpCmdShellEncoder(CmdEncoder):
 
 class WinCmdEncoder(CmdEncoder):
     def encode(self, cmd):
-        return "cmd /S /C \"{}\"".format(cmd)
+        return "cmd /S /C {}".format(cmd.replace("^", "^^").replace("&", "^&").replace(">", "^>").replace("(", "^(").replace(")", "^)"))
 
 class WmicEncoder(CmdEncoder):
     args = ("host", "username", "password")
@@ -139,6 +197,11 @@ class WmicEncoder(CmdEncoder):
         "output" : True
     }
 
+    def ready(self, index, encoders):
+        # Calculate the delay and encoding requirements based on other encoders in the chain
+        self._delay = sum([getattr(x, "delay", 0) for x in encoders[index + 1:]]) + self.delay
+        self._skipencoding = sum([1 if x.__class__ == self.__class__ else 0 for x in encoders[:index + 1]]) == 1
+
     def encode(self, cmd):
         host = self.host or "localhost"
         wmic_args = []
@@ -146,23 +209,37 @@ class WmicEncoder(CmdEncoder):
             wmic_args.append("/NODE:\"{}\"".format(self.host))
             wmic_args.append("/User:\"{}\"".format(self.username))
             wmic_args.append("/Password:\"{}\"".format(self.password))
+        wmic_args = " ".join(wmic_args)
 
         if self.output:
             alphabet = "ABCDEFGHJIKLMNOPQRSTUVWXYZabcdefghjiklmnopqrstuvwxyz0123456789"
             tmp_dir = "".join(random.choice(alphabet) for x in range(8))
             tmp_path = "{}\\{}.log".format(tmp_dir, "".join(random.choice(alphabet) for x in range(8)))
-            remote_cmd = WinCmdEncoder().encode("{} > C:\\{}".format(cmd, tmp_path)).replace("\"", "\\\"").replace(">", "^>")
+            # TODO: This is a bit of a mess and only works with 2 levels of recursion
+            if self._skipencoding:
+                remote_cmd = "cmd /S /C ({}) > C:\\{}".format(cmd, tmp_path).replace("\"", "\\\"")
+            else:
+                remote_cmd = WinCmdEncoder().encode("({}) > C:\\{}".format(cmd, tmp_path)).replace("\"", "\\\"")
             cmd = " && ".join([
               "mkdir \\\\{}\\C$\\{}".format(host, tmp_dir),
-              "wmic {} process call create \"{}\" >nul".format(" ".join(wmic_args), remote_cmd),
-              "ping -n {} 127.0.0.1 >nul".format(self.delay),
+              "wmic {} process call create \"{}\" >nul".format(wmic_args, remote_cmd),
+              "ping -n {} 127.0.0.1 >nul".format(self._delay),
               "type \\\\{}\\C$\\{}".format(host, tmp_path),
               "rmdir /S /Q \\\\{}\\C$\\{}".format(host, tmp_dir)
             ])
             return cmd
 
-        cmd = cmd.replace("\"", "\\\"").replace(">", "^>")
-        return "wmic {} process call create \"{}\"".format(" ".join(wmic_args), cmd)
+        cmd = cmd.replace("\"", "\\\"")
+        return "wmic {} process call create \"{}\"".format(wmic_args, cmd)
+
+class PowerShellEncoder(CmdEncoder):
+    def encode(self, cmd):
+        cmd = base64.b64encode(cmd.encode("UTF-16")[2:]).decode()
+        return "powershell -NoProfile –ExecutionPolicy Bypass -EncodedCommand {}".format(cmd)
+
+class EchoEncoder(CmdEncoder):
+    def encode(self, cmd):
+        return WinCmdEncoder().encode("echo {}".format(cmd))
 
 def print_help():
     print("Help text here")
@@ -199,9 +276,14 @@ def parse_cmd(cmd):
     return cmd.lstrip("$"), parts
 
 def execute(cmd, runner, encoders):
+    for index, encoder in enumerate(encoders):
+        encoder.ready(index, encoders)
     for encoder in encoders[::-1]:
+        print(cmd)
         cmd = encoder.encode(cmd)
+    print(cmd)
     cmd = runner.encode(cmd)
+    print(cmd)
     output = runner.run(cmd)
     print("\n".join("<<< {}".format(x) for x in output.splitlines()))
 
@@ -293,20 +375,20 @@ if __name__ == "__main__":
                     }
                     with open(args[0], "w") as f:
                         json.dump(session, f)
-                elif cmd == "push_encoder":
+                elif cmd in ["push_encoder", "push"]:
                     if len(args) == 0:
                         raise CmdRunnerException("$push_encoder requires at least 1 argument")
-                    encoder = args[0]
+                    encoder_arg = args[0]
                     args = args[1:]
                     available_encoders = {x.__name__.lower() : x for x in CmdEncoder.get_subclasses()}
-                    if not encoder.lower() in available_encoders:
-                        raise CmdRunnerException("'{}' is not a valid encoder".format(encoder))
-                    encoder = available_encoders[encoder.lower()]
+                    encoder = available_encoders.get(encoder_arg.lower(), available_encoders.get(encoder_arg.lower() + "encoder"))
+                    if encoder is None:
+                        raise CmdRunnerException("'{}' is not a valid encoder".format(encoder_arg))
                     try:
                         encoders.append(encoder(*args))
                     except TypeError:
                         raise CmdRunnerException("'{}' requires arguments:\n{}".format(encoder.__name__, "\n".join("\t{}".format(x) for x in encoder.help().splitlines())))
-                elif cmd == "pop_encoder":
+                elif cmd in ["pop_encoder", "pop"]:
                     index = -1
                     if len(args) == 1:
                         try:
@@ -335,6 +417,8 @@ if __name__ == "__main__":
                     print_encoders()
                 elif cmd == "list_runners":
                     print_runners()
+                else:
+                    print("[!] Unknown command '${}'".format(cmd))
             else:
                 execute(cmd, runner, encoders)
         except KeyboardInterrupt:
