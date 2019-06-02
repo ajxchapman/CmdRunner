@@ -151,7 +151,7 @@ class SSHEncoder(CmdEncoder):
     }
 
     def encode(self, cmd):
-        cmd = cmd.replace("\\", "\\\\").replace("\"", "\\\"")
+        cmd = cmd.replace("\\", "\\\\").replace("\"", "\\\"").replace("|", "\\|")
         ssh_options = []
         if self.identity is not None:
             ssh_options.append("-i {}".format(self.identity))
@@ -185,7 +185,7 @@ class XpCmdShellEncoder(CmdEncoder):
 
 class WinCmdEncoder(CmdEncoder):
     def encode(self, cmd):
-        return "cmd /S /C {}".format(cmd.replace("^", "^^").replace("&", "^&").replace(">", "^>").replace("(", "^(").replace(")", "^)"))
+        return "cmd /S /C {}".format(cmd.replace("^", "^^").replace("&", "^&").replace(">", "^>").replace("(", "^(").replace(")", "^)").replace("|", "^|"))
 
 class WmicEncoder(CmdEncoder):
     args = ("host", "username", "password")
