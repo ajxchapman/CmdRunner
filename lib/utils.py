@@ -33,7 +33,7 @@ def get_args(argument_string):
     kwargs = {}
     for arg in _tokenize(argument_string):
         try:
-            if "=" in arg:
+            if not arg.startswith("\"") and "=" in arg:
                 k, v = arg.split("=", 1)
                 if k[0].isdigit() or not all(x.isalpha() or x.isdigit() or x == "_" in alphabet for x in k):
                     raise ArgsException("Invalid keyword name '{}'".format(k))
