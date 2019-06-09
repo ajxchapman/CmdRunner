@@ -1,10 +1,22 @@
 class CmdRunnerException(Exception):
     pass
 
-class CmdBase:
-    args = []
-    default_args = {}
+class CmdArgument:
+    _index = 0
 
+    def __init__(self, default=None, arg_type=None, description=None):
+        self.default = default
+        self.arg_type = arg_type or type(default)
+        if default is None and arg_type is None:
+            raise CmdRunnerException("Must specify a type for non default arguments")
+        if self.arg_type not in [int, str, bytes, type(None)]:
+            raise CmdRunnerException("Unsupported argument type '{}'".format(self.arg_type))
+        self.required = default is None
+        self.description = description
+        self._index = CmdArgument._index
+        CmdArgument._index += 1
+
+class CmdBase:
     def __init__(self, *args, **kwargs):
         """
         Permissive __init__ method to assign object attributes from vrious sources:
@@ -12,30 +24,36 @@ class CmdBase:
           <kwargs> assigning each key, value pair as attributes
           <cls.default_args> assign each unset key, value pair as default attributes
         """
+        def set_argument(name, arg, value):
+            if not isinstance(value, arg.arg_type):
+                raise TypeError("Incorrect argument type for argument '{}', expecting '{}' receivied '{}'".format(name, arg.arg_type.__name__, type(value).__name__))
+            setattr(self, name, value)
+
+        cmd_arguments = {k : v for k, v in self.__class__.__dict__.items() if isinstance(v, CmdArgument)}
+        sorted_arguments = sorted(cmd_arguments.keys(), key=lambda x: cmd_arguments[x]._index)
+        required_arguments = [k for k in cmd_arguments.keys() if cmd_arguments[k].required]
+
         # Assign arguments based on the class args variable
-        for index, arg in enumerate(self.args):
+        for index, arg in enumerate(sorted_arguments):
             if index >= len(args):
                 break
-            setattr(self, arg, args[index])
+            set_argument(arg, cmd_arguments[arg], args[index])
 
         # Assign all kwargs
         for k, v in kwargs.items():
-            if not k.startswith("_"):
-                setattr(self, k, v)
+            if k in cmd_arguments:
+                set_argument(k, cmd_arguments[k], v)
 
         # Assign all default values
-        for k, v in self.default_args.items():
-            try:
-                getattr(self, k)
-            except AttributeError:
-                setattr(self, k, v)
+        for k, v in cmd_arguments.items():
+            if v.default:
+                if isinstance(getattr(self, k), CmdArgument):
+                    set_argument(k, v, v.default)
 
         # Check all required arguments exist
-        for arg in self.args:
-            try:
-                getattr(self, arg)
-            except AttributeError:
-                raise TypeError("{} Missing required argument '{}'".format(self.__class__.__name__, arg))
+        for arg in required_arguments:
+            if isinstance(getattr(self, arg), CmdArgument):
+                raise TypeError("Missing required argument '{}'".format(self.__class__.__name__, arg))
 
     @classmethod
     def get_subclasses(cls):
@@ -52,13 +70,21 @@ class CmdBase:
             lines.append(line.replace(padding, "", 1))
         return "\n".join(lines).strip()
 
+    @classmethod
+    def get_args(cls):
+        cmdline = []
+        arg_help = ""
+        for arg_name in sorted([k for k, v in cls.__dict__.items() if isinstance(v, CmdArgument)], key=lambda x: cls.__dict__[x]._index):
+            arg = getattr(cls, arg_name)
+            if arg.required:
+                cmdline.append(arg_name)
+            arg_help += "\n\t{:20s} {:5s} {:20s} {}".format(arg_name, arg.arg_type.__name__, "default={}".format(arg.default) if arg.default else "", arg.description)
+        return "{}({}){}".format(cls.__name__, ", ".join(cmdline), arg_help)
+
+
     def get_instance(self):
         output = [self.__class__.__name__]
-        for arg in self.args:
-            output.append("\t{}: {}".format(arg, str(getattr(self, arg))))
-        for arg in [x for x in sorted(self.__dict__.keys()) if not x.startswith("_")]:
-            if arg in self.args:
-                continue
+        for arg in sorted([k for k, v in self.__class__.__dict__.items() if isinstance(v, CmdArgument)], key=lambda x: self.__class__.__dict__[x]._index):
             output.append("\t{}: {}".format(arg, str(getattr(self, arg))))
         return "\n".join(output)
 
