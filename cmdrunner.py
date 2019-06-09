@@ -5,10 +5,11 @@ import re
 import readline
 import sys
 
-from lib.base import InteractiveCmd, CmdRunnerException, CmdRunner, CmdEncoder, execute
+from lib.base import InteractiveCmd, CmdRunnerException, CmdRunner, CmdEncoder, CmdDecoder, execute
 import lib.utils
 from lib.runners import *
 from lib.encoders import *
+from lib.decoders import *
 
 
 class HelpCmd(InteractiveCmd):
@@ -46,6 +47,10 @@ class PrintSessionCmd(InteractiveCmd):
             print("Encoders:")
             for index, encoder in enumerate(session["encoders"]):
                 print("[{}]: {}".format(index, "\n".join("\t{}".format(x) for x in encoder.get_instance().splitlines())))
+        if len(session["decoders"]):
+            print("Decoders:")
+            for index, decoder in enumerate(session["decoders"]):
+                print("[{}]: {}".format(index, "\n".join("\t{}".format(x) for x in decoder.get_instance().splitlines())))
 
 class LoadSessionCmd(InteractiveCmd):
     tag = "load_session"
@@ -66,13 +71,16 @@ class LoadSessionCmd(InteractiveCmd):
             _session = json.load(f)
         available_runners = {x.__name__ : x for x in CmdRunner.get_subclasses()}
         available_encoders = {x.__name__ : x for x in CmdEncoder.get_subclasses()}
+        available_decoders = {x.__name__ : x for x in CmdDecoder.get_subclasses()}
         try:
             runner = available_runners[_session["runner"]["__classname__"]].load(_session["runner"])
             encoders = [available_encoders[x["__classname__"]].load(x) for x in _session["encoders"]]
+            decoders = [available_decoders[x["__classname__"]].load(x) for x in _session["decoders"]]
         except KeyError:
             raise CmdRunnerException("Invalid session")
         session["runner"] = runner
         session["encoders"] = encoders
+        session["decoders"] = decoders
         PrintSessionCmd.run(None, session)
 
 class SaveSessionCmd(InteractiveCmd):
@@ -121,6 +129,19 @@ class ListEncodersCmd(InteractiveCmd):
         print("Encoders:")
         for encoder in sorted(CmdEncoder.get_subclasses(), key=lambda x: x.__name__):
             print("\t{}".format(encoder.__name__))
+
+class ListDecodersCmd(InteractiveCmd):
+    tag = "list_decoders"
+    description = "List available output decoders"
+    help = """
+        List available output decoders.
+    """
+
+    @classmethod
+    def run(cls, args, session):
+        print("Decoders:")
+        for decoder in sorted(CmdDecoder.get_subclasses(), key=lambda x: x.__name__):
+            print("\t{}".format(decoder.__name__))
 
 class PushEncoder(InteractiveCmd):
     tag = "push_encoder"
@@ -188,6 +209,73 @@ class PopEncoder(InteractiveCmd):
         if index >= len(session["encoders"]):
             raise CmdRunnerException("Invalid index '{}' for encoder list length {}".format(args, len(session["encoders"])))
         session["encoders"].pop(index)
+
+class PushDecoder(InteractiveCmd):
+    tag = "push_decoder"
+    description = "Add a decoder to the decoders list"
+    help = """
+        Add a decoder to the decoders list.
+            $push_decoder [index] <decoder_name> [decoder_arguments]
+
+        Decoder arguments should be supplied in either a json form (e.g. {"key" : "value"})
+        or a python funcion call form (e.g. (1, 2, key="value")).
+    """
+
+    @classmethod
+    def run(cls, args, session):
+        available_decoders = {x.__name__.lower() : x for x in CmdDecoder.get_subclasses()}
+        match = re.match("([0-9]+)? *([A-Za-z0-9_]+)(.*)", args)
+        if match is None:
+            raise CmdRunnerException("$push_decoder requires arguments: [index] <decoder_name> [decoder_arguments]")
+
+        index, decoder_arg, args = match.groups()
+        index = int(index) if index is not None else len(session["decoders"])
+        decoder_cls = available_decoders.get(decoder_arg.lower(), available_decoders.get(decoder_arg.lower() + "decoder"))
+        args = args.strip()
+
+        if decoder_cls is None:
+            raise CmdRunnerException("Unknown decoder '{}'".format(decoder_arg))
+
+        try:
+            if args.startswith("(") and args.endswith(")"):
+                try:
+                    args, kwargs = lib.utils.get_args(args[1:-1])
+                    decoder = decoder_cls(*args, **kwargs)
+                except lib.utils.ArgsException as e:
+                    raise CmdRunnerException(str(e))
+            elif args.startswith("{") and args.endswith("}"):
+                try:
+                    decoder = decoder_cls(**json.loads(args))
+                except json.decoder.JSONDecodeError:
+                    raise CmdRunnerException("Invalid json arguments")
+            elif len(args):
+                raise CmdRunnerException("Invalid arguments '{}'".format(args))
+            else:
+                decoder = decoder_cls()
+        except TypeError as e:
+            raise CmdRunnerException("{}\n{}".format(e, decoder_cls.get_help()))
+        session["decoders"].insert(index, decoder)
+
+class PopDecoder(InteractiveCmd):
+    tag = "pop_decoder"
+    description = "Remove decoder from decoders list"
+    help = """
+        Remove decoder from decoders list.
+            $pop_decoder <index>
+    """
+
+    @classmethod
+    def run(cls, args, session):
+        if len(args.strip()) > 0:
+            try:
+                index = int(args.strip())
+            except ValueError:
+                raise CmdRunnerException("Invalid index '{}'".format(args))
+        else:
+            index = -1
+        if index >= len(session["decoders"]):
+            raise CmdRunnerException("Invalid index '{}' for decoder list length {}".format(args, len(session["decoders"])))
+        session["decoders"].pop(index)
 
 class SetRunner(InteractiveCmd):
     tag = "set_runner"

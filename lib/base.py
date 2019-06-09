@@ -90,6 +90,12 @@ class CmdEncoder(CmdBase):
     def ready(self, index, encoders):
         pass
 
+class CmdDecoder(CmdBase):
+    def decode(self, cmd):
+        """
+        Simple CmdDecoder which just returns the command output as is.
+        """
+        return cmd
 
 class InteractiveCmd(CmdBase):
     tag = None
@@ -121,4 +127,7 @@ def execute(cmd, session):
     for encoder in session["encoders"][::-1]:
         cmd = encoder.encode(cmd)
     cmd = session["runner"].encode(cmd)
-    return session["runner"].run(cmd)
+    output = session["runner"].run(cmd)
+    for decoder in session["decoders"][::-1]:
+        output = decoder.decode(output)
+    return output
