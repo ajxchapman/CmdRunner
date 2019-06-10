@@ -17,20 +17,40 @@ class HelpCmd(InteractiveCmd):
 
     @classmethod
     def run(cls, args, session):
-        cmd = args.strip().lstrip("$")
+        cmd = args.strip()
         if len(cmd):
-            try:
-                cls = InteractiveCmd.get_command(cmd)
-                print("Help for command ${}".format(cls.tag))
-                print("\n".join("\t" + x for x in cls.get_help().splitlines()))
-            except CmdRunnerException as e:
-                print(str(e))
+            cmd = cmd.lstrip("$").split(" ")
+            if cmd[0] in ["runner", "encoder", "decoder"]:
+                available_runners = {x.__name__.lower() : x for x in CmdRunner.get_subclasses()}
+                available_encoders = {x.__name__.lower() : x for x in CmdEncoder.get_subclasses()}
+                available_decoders = {x.__name__.lower() : x for x in CmdDecoder.get_subclasses()}
+
+                cls = None
+                list_cmd, available_clsses = {"runner" : (ListRunnersCmd, available_runners), "encoder" : (ListEncodersCmd, available_encoders), "decoder" : (ListDecodersCmd, available_decoders)}[cmd[0]]
+                if len(cmd) == 1:
+                    list_cmd.run(None, session)
+                    print("\nFor help on an individual {} use:\n\t$help {} <name>".format(cmd[0], cmd[0]))
+                else:
+                    cls = available_clsses.get(cmd[1].lower(), available_clsses.get(cmd[1].lower() + cmd[0]))
+                    if cls is None:
+                        raise CmdRunnerException("Unknown {} '{}''".format(cmd[0], cmd[1]))
+                    print(cls.get_help())
+                    print()
+                    print(cls.get_args())
+            else:
+                try:
+                    cls = InteractiveCmd.get_command(cmd[0])
+                    print("Help for command ${}".format(cls.tag))
+                    print("\n".join("\t" + x for x in cls.get_help().splitlines()))
+                except CmdRunnerException as e:
+                    print(str(e))
             return
         print("Available commands:")
-        for icmd in InteractiveCmd.get_subclasses():
+        for icmd in sorted(InteractiveCmd.get_subclasses(), key=lambda x: x.__name__):
             if icmd == cls:
                 continue
-            print("\t{:20s} {}".format(icmd.tag, icmd.description))
+            print("\t${:20s} {}".format(icmd.tag, icmd.description))
+        print("\nFor help on individual modules use \"$help <module_type> <module>\", e.g.:\n\t$help runner bash\n\t$help encoder xpcmdshell\n\t$help decoder base64")
 
 class PrintSessionCmd(InteractiveCmd):
     tag = "print_session"
@@ -113,7 +133,7 @@ class ListRunnersCmd(InteractiveCmd):
 
     @classmethod
     def run(cls, args, session):
-        print("Runners:")
+        print("Available Runners:")
         for runner in sorted(CmdRunner.get_subclasses(), key=lambda x: x.__name__):
             print("\t{}".format(runner.__name__))
 
@@ -126,7 +146,7 @@ class ListEncodersCmd(InteractiveCmd):
 
     @classmethod
     def run(cls, args, session):
-        print("Encoders:")
+        print("Available Encoders:")
         for encoder in sorted(CmdEncoder.get_subclasses(), key=lambda x: x.__name__):
             print("\t{}".format(encoder.__name__))
 
@@ -139,7 +159,7 @@ class ListDecodersCmd(InteractiveCmd):
 
     @classmethod
     def run(cls, args, session):
-        print("Decoders:")
+        print("Available Decoders:")
         for decoder in sorted(CmdDecoder.get_subclasses(), key=lambda x: x.__name__):
             print("\t{}".format(decoder.__name__))
 
@@ -152,6 +172,9 @@ class PushEncoder(InteractiveCmd):
 
         Encoder arguments should be supplied in either a json form (e.g. {"key" : "value"})
         or a python funcion call form (e.g. (1, 2, key="value")).
+
+        Example:
+            $push_encoder curl("http://www.example.com", "arg=[*]", replace="*")
     """
 
     @classmethod
@@ -186,7 +209,7 @@ class PushEncoder(InteractiveCmd):
             else:
                 encoder = encoder_cls()
         except TypeError as e:
-            raise CmdRunnerException("{}\n{}".format(e, encoder_cls.get_help()))
+            raise CmdRunnerException("Error: {}\n\n{}".format(e, encoder_cls.get_args()))
         session["encoders"].insert(index, encoder)
 
 class PopEncoder(InteractiveCmd):
@@ -219,6 +242,9 @@ class PushDecoder(InteractiveCmd):
 
         Decoder arguments should be supplied in either a json form (e.g. {"key" : "value"})
         or a python funcion call form (e.g. (1, 2, key="value")).
+
+        Example:
+            $push_decoder base64()
     """
 
     @classmethod
@@ -253,7 +279,7 @@ class PushDecoder(InteractiveCmd):
             else:
                 decoder = decoder_cls()
         except TypeError as e:
-            raise CmdRunnerException("{}\n{}".format(e, decoder_cls.get_help()))
+            raise CmdRunnerException("Error: {}\n\n{}".format(e, decoder_cls.get_args()))
         session["decoders"].insert(index, decoder)
 
 class PopDecoder(InteractiveCmd):
@@ -286,6 +312,9 @@ class SetRunner(InteractiveCmd):
 
         Runner arguments should be supplied in either a json form (e.g. {"key" : "value"})
         or a python funcion call form (e.g. (1, 2, key="value")).
+
+        Example:
+            $set_runner bash(timeout=25)
     """
 
     @classmethod
@@ -318,7 +347,7 @@ class SetRunner(InteractiveCmd):
             else:
                 runner = runner_cls()
         except TypeError as e:
-            raise CmdRunnerException("{}\n{}".format(e, runner_cls.get_help()))
+            raise CmdRunnerException("Error: {}\n\n{}".format(e, runner_cls.get_args()))
         session["runner"] = runner
 
 class QuitCmd(InteractiveCmd):
@@ -371,6 +400,8 @@ if __name__ == "__main__":
                         cmd += "{}\n".format(_cmd)
                         _cmd = input("... ")
 
+                if cmd in ["help", "h", "-h", "--help", "?", "/?"]:
+                    cmd = "$help"
                 if cmd.startswith("$"):
                     cmd, args = (cmd.lstrip("$").split(" ", 1) + [""])[:2]
                     cls = InteractiveCmd.get_command(cmd)
