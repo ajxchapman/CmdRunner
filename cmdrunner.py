@@ -357,6 +357,7 @@ if __name__ == "__main__":
     parser.add_argument('cmd', default=[], nargs=argparse.REMAINDER)
     args = parser.parse_args()
 
+    session = {}
     if args.session is not None:
         LoadSessionCmd.run(args.session, session)
         if not args.quiet:
