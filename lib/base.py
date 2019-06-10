@@ -75,14 +75,17 @@ class CmdBase:
 
     @classmethod
     def get_args(cls):
-        cmdline = []
+        reqcmdline = []
+        optcmdline = []
         arg_help = ""
         for arg_name in sorted([k for k, v in cls.__dict__.items() if isinstance(v, CmdArgument)], key=lambda x: cls.__dict__[x]._index):
             arg = getattr(cls, arg_name)
             if arg.required:
-                cmdline.append(arg_name)
+                reqcmdline.append("<{}>".format(arg_name))
+            else:
+                optcmdline.append("[--{}=<{}>]".format(arg_name, arg.arg_type.__name__))
             arg_help += "\n\t{:20s} {:5s} {:20s} {}".format(arg_name, arg.arg_type.__name__, "default={}".format(arg.default) if arg.default else "", arg.description)
-        return "{}({}){}".format(cls.__name__, ", ".join(cmdline), arg_help)
+        return "{} {}{}".format(cls.__name__, " ".join(optcmdline + reqcmdline), arg_help)
 
 
     def get_instance(self):
