@@ -42,7 +42,7 @@ class LoadSessionCmd(InteractiveCmd):
     tab_complete_options = glob.glob("*.json")
 
     @classmethod
-    def run(cls, args, session):
+    def run(cls, args, session, quiet=False):
         session_file = args.strip()
         if len(session_file) == 0:
             raise CmdRunnerException("$load_session requires <session_file> argument")
@@ -62,7 +62,8 @@ class LoadSessionCmd(InteractiveCmd):
         session["runner"] = runner
         session["encoders"] = encoders
         session["decoders"] = decoders
-        PrintSessionCmd.run(None, session)
+        if not quiet:
+            PrintSessionCmd.run(None, session)
 
 class SaveSessionCmd(InteractiveCmd):
     tag = "save_session"
@@ -359,9 +360,7 @@ if __name__ == "__main__":
 
     session = {}
     if args.session is not None:
-        LoadSessionCmd.run(args.session, session)
-        if not args.quiet:
-            PrintSessionCmd.run(None, session)
+        LoadSessionCmd.run(args.session, session, quiet=args.quiet)
     else:
         session = {
             "runner" : bash.BashRunner(),
