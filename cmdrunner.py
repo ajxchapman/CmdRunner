@@ -170,11 +170,14 @@ class PushEncoder(InteractiveCmd):
         Add an encoder to the encoders list.
             $push_encoder [index] <encoder_name> [encoder_arguments]
 
-        Encoder arguments should be supplied in either a json form (e.g. {"key" : "value"})
-        or a python funcion call form (e.g. (1, 2, key="value")).
+        Encoder arguments should be supplied in either a json form (e.g. {"key" : "value"}),
+        a python funcion call form (e.g. (1, 2, key="value")), or a command line argument
+        form (--key="value" 1 2). Note: Special characters need to be escaped within quotes
 
         Example:
+            $push_encoder curl {"url" : "http://www.example.com", "data" : "arg=[*]", "replace" : "*"}
             $push_encoder curl("http://www.example.com", "arg=[*]", replace="*")
+            $push_encoder curl --replace=* http://www.example.com "arg=[*]"
     """
 
     @classmethod
@@ -193,21 +196,12 @@ class PushEncoder(InteractiveCmd):
             raise CmdRunnerException("Unknown encoder '{}'".format(encoder_arg))
 
         try:
-            if args.startswith("(") and args.endswith(")"):
-                try:
-                    args, kwargs = lib.utils.get_args(args[1:-1])
-                    encoder = encoder_cls(*args, **kwargs)
-                except lib.utils.ArgsException as e:
-                    raise CmdRunnerException(str(e))
-            elif args.startswith("{") and args.endswith("}"):
-                try:
-                    encoder = encoder_cls(**json.loads(args))
-                except json.decoder.JSONDecodeError:
-                    raise CmdRunnerException("Invalid json arguments")
-            elif len(args):
-                raise CmdRunnerException("Invalid arguments '{}'".format(args))
-            else:
-                encoder = encoder_cls()
+            try:
+                args, kwargs = lib.utils.get_args(args)
+            except lib.utils.ArgsException as e:
+                raise CmdRunnerException(str(e))
+            encoder = encoder_cls(*args, **kwargs)
+            print(encoder.get_instance())
         except TypeError as e:
             raise CmdRunnerException("Error: {}\n\n{}".format(e, encoder_cls.get_args()))
         session["encoders"].insert(index, encoder)
@@ -240,11 +234,14 @@ class PushDecoder(InteractiveCmd):
         Add a decoder to the decoders list.
             $push_decoder [index] <decoder_name> [decoder_arguments]
 
-        Decoder arguments should be supplied in either a json form (e.g. {"key" : "value"})
-        or a python funcion call form (e.g. (1, 2, key="value")).
+        Decoder arguments should be supplied in either a json form (e.g. {"key" : "value"}),
+        a python funcion call form (e.g. (1, 2, key="value")), or a command line argument
+        form (--key="value" 1 2). Note: Special characters need to be escaped within quotes
 
         Example:
-            $push_decoder base64()
+            $push_decoder curl {"url" : "http://www.example.com", "data" : "arg=[*]", "replace" : "*"}
+            $push_decoder curl("http://www.example.com", "arg=[*]", replace="*")
+            $push_decoder curl --replace=* http://www.example.com "arg=[*]"
     """
 
     @classmethod
@@ -263,21 +260,12 @@ class PushDecoder(InteractiveCmd):
             raise CmdRunnerException("Unknown decoder '{}'".format(decoder_arg))
 
         try:
-            if args.startswith("(") and args.endswith(")"):
-                try:
-                    args, kwargs = lib.utils.get_args(args[1:-1])
-                    decoder = decoder_cls(*args, **kwargs)
-                except lib.utils.ArgsException as e:
-                    raise CmdRunnerException(str(e))
-            elif args.startswith("{") and args.endswith("}"):
-                try:
-                    decoder = decoder_cls(**json.loads(args))
-                except json.decoder.JSONDecodeError:
-                    raise CmdRunnerException("Invalid json arguments")
-            elif len(args):
-                raise CmdRunnerException("Invalid arguments '{}'".format(args))
-            else:
-                decoder = decoder_cls()
+            try:
+                args, kwargs = lib.utils.get_args(args)
+            except lib.utils.ArgsException as e:
+                raise CmdRunnerException(str(e))
+            decoder = decoder_cls(*args, **kwargs)
+            print(decoder.get_instance())
         except TypeError as e:
             raise CmdRunnerException("Error: {}\n\n{}".format(e, decoder_cls.get_args()))
         session["decoders"].insert(index, decoder)
@@ -310,11 +298,14 @@ class SetRunner(InteractiveCmd):
         Set the command runner.
             $set_runner <runner_name> [runner_arguments]
 
-        Runner arguments should be supplied in either a json form (e.g. {"key" : "value"})
-        or a python funcion call form (e.g. (1, 2, key="value")).
+        Runner arguments should be supplied in either a json form (e.g. {"key" : "value"}),
+        a python funcion call form (e.g. (1, 2, key="value")), or a command line argument
+        form (--key="value" 1 2). Note: Special characters need to be escaped within quotes
 
         Example:
-            $set_runner bash(timeout=25)
+            $set_runner bash {"timeout" : 2}
+            $set_runner bash(timeout=2)
+            $set_runner bash --timeout=2
     """
 
     @classmethod
@@ -326,26 +317,17 @@ class SetRunner(InteractiveCmd):
         runner_arg, args = match.groups()
         args = args.strip()
 
-        if not runner_arg.lower() in available_runners:
+        runner_cls = available_runners.get(runner_arg.lower(), available_runners.get(runner_arg.lower() + "runner"))
+        if runner_cls is None:
             raise CmdRunnerException("'{}' is not a valid runner".format(runner_arg))
-        runner_cls = available_runners[runner_arg.lower()]
 
         try:
-            if args.startswith("(") and args.endswith(")"):
-                try:
-                    args, kwargs = lib.utils.get_args(args[1:-1])
-                    runner = runner_cls(*args, **kwargs)
-                except lib.utils.ArgsException as e:
-                    raise CmdRunnerException(str(e))
-            elif args.startswith("{") and args.endswith("}"):
-                try:
-                    runner = runner_cls(**json.loads(args))
-                except json.decoder.JSONDecodeError:
-                    raise CmdRunnerException("Invalid json arguments")
-            elif len(args):
-                raise CmdRunnerException("Invalid arguments '{}'".format(args))
-            else:
-                runner = runner_cls()
+            try:
+                args, kwargs = lib.utils.get_args(args)
+            except lib.utils.ArgsException as e:
+                raise CmdRunnerException(str(e))
+            runner = runner_cls(*args, **kwargs)
+            print(runner.get_instance())
         except TypeError as e:
             raise CmdRunnerException("Error: {}\n\n{}".format(e, runner_cls.get_args()))
         session["runner"] = runner
