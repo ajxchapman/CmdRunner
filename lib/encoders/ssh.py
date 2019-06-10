@@ -15,5 +15,6 @@ class SSHEncoder(CmdEncoder):
             ssh_options.append("-i {}".format(self.identity))
         ssh_options.append("-o \"StrictHostKeyChecking no\"")
         ssh_options.append("-o \"UserKnownHostsFile /dev/null\"")
+        ssh_options.append("-o \"LogLevel ERROR\"")
         ssh_options = " ".join(ssh_options)
         return "ssh {} {}@{} \"{}\"".format(ssh_options, self.username, self.host, cmd)
