@@ -75,7 +75,7 @@ def get_args(argument_string):
             else:
                 args.append(value)
         except ValueError:
-            raise ArgsException("Invalid argument '{}'".format(arg))
+            raise ArgsException("Invalid argument '{}'".format(value))
         # Reset key to None, this can be bypassed using continue statement above
         key = None
     return args, kwargs
