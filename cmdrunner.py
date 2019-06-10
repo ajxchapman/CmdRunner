@@ -1,4 +1,5 @@
 import argparse
+import glob
 import json
 import os
 import re
@@ -10,47 +11,6 @@ import lib.utils
 from lib.runners import *
 from lib.encoders import *
 from lib.decoders import *
-
-
-class HelpCmd(InteractiveCmd):
-    tag = "help"
-
-    @classmethod
-    def run(cls, args, session):
-        cmd = args.strip()
-        if len(cmd):
-            cmd = cmd.lstrip("$").split(" ")
-            if cmd[0] in ["runner", "encoder", "decoder"]:
-                available_runners = {x.__name__.lower() : x for x in CmdRunner.get_subclasses()}
-                available_encoders = {x.__name__.lower() : x for x in CmdEncoder.get_subclasses()}
-                available_decoders = {x.__name__.lower() : x for x in CmdDecoder.get_subclasses()}
-
-                cls = None
-                list_cmd, available_clsses = {"runner" : (ListRunnersCmd, available_runners), "encoder" : (ListEncodersCmd, available_encoders), "decoder" : (ListDecodersCmd, available_decoders)}[cmd[0]]
-                if len(cmd) == 1:
-                    list_cmd.run(None, session)
-                    print("\nFor help on an individual {} use:\n\t$help {} <name>".format(cmd[0], cmd[0]))
-                else:
-                    cls = available_clsses.get(cmd[1].lower(), available_clsses.get(cmd[1].lower() + cmd[0]))
-                    if cls is None:
-                        raise CmdRunnerException("Unknown {} '{}''".format(cmd[0], cmd[1]))
-                    print(cls.get_help())
-                    print()
-                    print(cls.get_args())
-            else:
-                try:
-                    cls = InteractiveCmd.get_command(cmd[0])
-                    print("Help for command ${}".format(cls.tag))
-                    print("\n".join("\t" + x for x in cls.get_help().splitlines()))
-                except CmdRunnerException as e:
-                    print(str(e))
-            return
-        print("Available commands:")
-        for icmd in sorted(InteractiveCmd.get_subclasses(), key=lambda x: x.__name__):
-            if icmd == cls:
-                continue
-            print("\t${:20s} {}".format(icmd.tag, icmd.description))
-        print("\nFor help on individual modules use \"$help <module_type> <module>\", e.g.:\n\t$help runner bash\n\t$help encoder xpcmdshell\n\t$help decoder base64")
 
 class PrintSessionCmd(InteractiveCmd):
     tag = "print_session"
@@ -79,6 +39,7 @@ class LoadSessionCmd(InteractiveCmd):
         Load session data from saved json file.
             $load_session <session_file>
     """
+    tab_complete_options = glob.glob("*.json")
 
     @classmethod
     def run(cls, args, session):
@@ -110,6 +71,7 @@ class SaveSessionCmd(InteractiveCmd):
         Save session data to json file.
             $save_session <session_file>
     """
+    tab_complete_options = glob.glob("*.json")
 
     @classmethod
     def run(cls, args, session):
@@ -179,6 +141,7 @@ class PushEncoder(InteractiveCmd):
             $push_encoder curl("http://www.example.com", "arg=[*]", replace="*")
             $push_encoder curl --replace=* http://www.example.com "arg=[*]"
     """
+    tab_complete_options = [x.__name__ for x in CmdEncoder.get_subclasses()]
 
     @classmethod
     def run(cls, args, session):
@@ -243,6 +206,7 @@ class PushDecoder(InteractiveCmd):
             $push_decoder curl("http://www.example.com", "arg=[*]", replace="*")
             $push_decoder curl --replace=* http://www.example.com "arg=[*]"
     """
+    tab_complete_options = [x.__name__ for x in CmdDecoder.get_subclasses()]
 
     @classmethod
     def run(cls, args, session):
@@ -307,6 +271,7 @@ class SetRunner(InteractiveCmd):
             $set_runner bash(timeout=2)
             $set_runner bash --timeout=2
     """
+    tab_complete_options = [x.__name__ for x in CmdRunner.get_subclasses()]
 
     @classmethod
     def run(cls, args, session):
@@ -342,6 +307,48 @@ class QuitCmd(InteractiveCmd):
         print("Quitting...")
         sys.exit(0)
 
+# This class needs to be last due to the way it fills in it's tab_complete_options
+class HelpCmd(InteractiveCmd):
+    tag = "help"
+    tab_complete_options = [x.tag for x in InteractiveCmd.get_subclasses() if x.tag != "help"] + ["runner", "encoder", "decoder"]
+
+    @classmethod
+    def run(cls, args, session):
+        cmd = args.strip()
+        if len(cmd):
+            cmd = cmd.lstrip("$").split(" ")
+            if cmd[0] in ["runner", "encoder", "decoder"]:
+                available_runners = {x.__name__.lower() : x for x in CmdRunner.get_subclasses()}
+                available_encoders = {x.__name__.lower() : x for x in CmdEncoder.get_subclasses()}
+                available_decoders = {x.__name__.lower() : x for x in CmdDecoder.get_subclasses()}
+
+                cls = None
+                list_cmd, available_clsses = {"runner" : (ListRunnersCmd, available_runners), "encoder" : (ListEncodersCmd, available_encoders), "decoder" : (ListDecodersCmd, available_decoders)}[cmd[0]]
+                if len(cmd) == 1:
+                    list_cmd.run(None, session)
+                    print("\nFor help on an individual {} use:\n\t$help {} <name>".format(cmd[0], cmd[0]))
+                else:
+                    cls = available_clsses.get(cmd[1].lower(), available_clsses.get(cmd[1].lower() + cmd[0]))
+                    if cls is None:
+                        raise CmdRunnerException("Unknown {} '{}''".format(cmd[0], cmd[1]))
+                    print(cls.get_help())
+                    print()
+                    print(cls.get_args())
+            else:
+                try:
+                    cls = InteractiveCmd.get_command(cmd[0])
+                    print("Help for command ${}".format(cls.tag))
+                    print("\n".join("\t" + x for x in cls.get_help().splitlines()))
+                except CmdRunnerException as e:
+                    print(str(e))
+            return
+        print("Available commands:")
+        for icmd in sorted(InteractiveCmd.get_subclasses(), key=lambda x: x.__name__):
+            if icmd == cls:
+                continue
+            print("\t${:20s} {}".format(icmd.tag, icmd.description))
+        print("\nFor help on individual modules use \"$help <module_type> <module>\", e.g.:\n\t$help runner bash\n\t$help encoder xpcmdshell\n\t$help decoder base64")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(prog="cmdrunner")
@@ -366,6 +373,8 @@ if __name__ == "__main__":
     if len(args.cmd):
         print(execute(" ".join(args.cmd), session))
     else:
+        readline.parse_and_bind("tab: complete")
+        readline.set_completer(InteractiveCmd.completer)
         while True:
             try:
                 cmd = input(">>> ").strip()

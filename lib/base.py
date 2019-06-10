@@ -1,3 +1,5 @@
+import readline
+
 class CmdRunnerException(Exception):
     pass
 
@@ -127,6 +129,7 @@ class CmdDecoder(CmdBase):
 class InteractiveCmd(CmdBase):
     tag = None
     description = "InteractiveCmd base class"
+    tab_complete_options = []
 
     @classmethod
     def get_command(cls, cmd):
@@ -147,6 +150,28 @@ class InteractiveCmd(CmdBase):
     @classmethod
     def parse_cmd(cls):
         pass
+
+    @classmethod
+    def completer(cls, text, state):
+        line = readline.get_line_buffer()
+        if line.startswith("$"):
+            parts = line.lstrip("$").split(" ")
+            subclsses = cls.get_subclasses()
+            options = []
+            if len(parts) > 1:
+                for subcls in subclsses:
+                    if subcls.tag == parts[0]:
+                        options = subcls.tab_complete_options
+                        break
+                if any(x in options for x in parts[1:]):
+                    return None
+            else:
+                options = ["{} ".format(x.tag) for x in subclsses]
+            try:
+                return [x for x in options if x.lower().startswith(text.lower())][state]
+            except IndexError:
+                pass
+        return None
 
 def execute(cmd, session):
     for index, encoder in enumerate(session["encoders"]):
