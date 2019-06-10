@@ -1,3 +1,5 @@
+import urllib.parse
+
 from lib.base import CmdEncoder, CmdArgument
 
 class CurlEncoder(CmdEncoder):
