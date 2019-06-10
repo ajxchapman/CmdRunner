@@ -45,6 +45,8 @@ class CmdBase:
         # Assign all kwargs
         for k, v in kwargs.items():
             if k in cmd_arguments:
+                if not isinstance(getattr(self, k), CmdArgument):
+                    raise TypeError("Argument repeated '{}' value '{}'".format(k, getattr(self, k)))
                 set_argument(k, cmd_arguments[k], v)
 
         # Assign all default values
@@ -57,6 +59,13 @@ class CmdBase:
         for arg in required_arguments:
             if isinstance(getattr(self, arg), CmdArgument):
                 raise TypeError("Missing required argument '{}'".format(arg))
+
+        # Check no unnecessary arguments were provided
+        if len(args) > len(cmd_arguments):
+            raise TypeError("Constructor takes {} positional arguments but {} were given".format(len(cmd_arguments), len(args)))
+        for x in kwargs.keys():
+            if not x in sorted_arguments:
+                raise TypeError("Constructor got an unexpected keyword argument '{}'".format(x))
 
     @classmethod
     def get_subclasses(cls):
