@@ -1,13 +1,12 @@
-from lib.base import CmdEncoder
+from lib.base import CmdEncoder, CmdArgument
 
 class SSHEncoder(CmdEncoder):
     help = """
-    SSH encoder.
+        Encoder which runs the given command on the target SSH server.
     """
-    args = ("username", "host")
-    default_args = {
-        "identity" : None
-    }
+    username = CmdArgument(arg_type=str, description="The SSH user")
+    host = CmdArgument(arg_type=str, description="The SSH host")
+    identity = CmdArgument(arg_type=str, default=None, required=False, description="Path to the identity file to use")
 
     def encode(self, cmd):
         cmd = cmd.replace("\\", "\\\\").replace("\"", "\\\"").replace("|", "\\|")

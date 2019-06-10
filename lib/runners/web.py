@@ -1,13 +1,15 @@
 import requests
 import urllib.parse
 
-from lib.base import CmdRunner
+from lib.base import CmdRunner, CmdArgument
 
 class WebRunner(CmdRunner):
-    args = ("url", "data")
-    default_args = {
-        "replace" : "***"
-    }
+    help = """
+        HTTP runner which POSTS command to the provided URL.
+    """
+    url = CmdArgument(arg_type=str, description="The URL to connect to")
+    data = CmdArgument(arg_type=str, description="The POST data to send in the HTTP request")
+    replace = CmdArgument(arg_type=str, default="***", description="The string to replace with the encoded command")
 
     def run(self, cmd):
         data = self.data.replace(self.replace, cmd)

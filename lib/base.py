@@ -4,14 +4,14 @@ class CmdRunnerException(Exception):
 class CmdArgument:
     _index = 0
 
-    def __init__(self, default=None, arg_type=None, description=None):
+    def __init__(self, default=None, arg_type=None, required=None, description=None):
         self.default = default
         self.arg_type = arg_type or type(default)
         if default is None and arg_type is None:
             raise CmdRunnerException("Must specify a type for non default arguments")
-        if self.arg_type not in [int, str, bytes, type(None)]:
+        if self.arg_type not in [int, str, bytes, bool, type(None)]:
             raise CmdRunnerException("Unsupported argument type '{}'".format(self.arg_type))
-        self.required = default is None
+        self.required = (default is None) if required is None else required
         self.description = description
         self._index = CmdArgument._index
         CmdArgument._index += 1
@@ -25,8 +25,9 @@ class CmdBase:
           <cls.default_args> assign each unset key, value pair as default attributes
         """
         def set_argument(name, arg, value):
-            if not isinstance(value, arg.arg_type):
-                raise TypeError("Incorrect argument type for argument '{}', expecting '{}' receivied '{}'".format(name, arg.arg_type.__name__, type(value).__name__))
+            if value != arg.default:
+                if not isinstance(value, arg.arg_type):
+                    raise TypeError("Incorrect argument type for argument '{}', expecting '{}' receivied '{}'".format(name, arg.arg_type.__name__, type(value).__name__))
             setattr(self, name, value)
 
         cmd_arguments = {k : v for k, v in self.__class__.__dict__.items() if isinstance(v, CmdArgument)}

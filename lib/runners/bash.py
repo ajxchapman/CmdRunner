@@ -3,12 +3,13 @@ import signal
 import subprocess
 import time
 
-from lib.base import CmdRunner
+from lib.base import CmdRunner, CmdArgument
 
 class BashRunner(CmdRunner):
-    default_args = {
-        "timeout" : 30
-    }
+    timeout = CmdArgument(default=30, arg_type=int, description="Number of seconds to wait for the command to complete")
+    help = """
+        Basic runner to run commands in a bash shell.
+    """
 
     def run(self, cmd):
         """

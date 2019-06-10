@@ -2,17 +2,18 @@ import random
 
 import lib.encoders.wincmd
 
-from lib.base import CmdEncoder
+from lib.base import CmdEncoder, CmdArgument
 
 class WmicEncoder(CmdEncoder):
-    args = ("host", "username", "password")
-    default_args = {
-        "host" : None,
-        "username" : None,
-        "password" : None,
-        "delay" : 2,
-        "output" : True
-    }
+    help = """
+        Encoder which runs the given command on a remote server via WMIC.
+    """
+    host = CmdArgument(arg_type=str, description="Hostname of the remote system")
+    username = CmdArgument(arg_type=str, default=None, description="Username to access the remote system")
+    password = CmdArgument(arg_type=str, default=None, description="Password to access the remote system")
+    delay = CmdArgument(arg_type=int, default=2, description="How long to wait for the command to complete")
+    output = CmdArgument(arg_type=bool, default=True, description="Whether the output of the command should be captured")
+
 
     def ready(self, index, encoders):
         # Calculate the delay and encoding requirements based on other encoders in the chain
