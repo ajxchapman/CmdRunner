@@ -105,13 +105,15 @@ class CmdBase:
 
     def save(self):
         output = {"__classname__" : self.__class__.__name__}
-        for arg in self.args or [x for x in sorted(self.__dict__.keys()) if not x.startswith("_")]:
+        for arg in [x for x in self.__class__.__dict__.keys() if isinstance(self.__class__.__dict__[x], CmdArgument)]:
             output[arg] = getattr(self, arg)
         return output
 
     @classmethod
-    def load(cls, instance):
-        return cls(**instance)
+    def load(cls, args):
+        _args = {**args}
+        del _args["__classname__"]
+        return cls(**_args)
 
 class CmdRunner(CmdBase):
     def encode(self, cmd):
