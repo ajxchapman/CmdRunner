@@ -47,14 +47,14 @@ class CmdBase:
 
         # Assign all default values
         for k, v in cmd_arguments.items():
-            if v.default:
+            if v.default or not v.required:
                 if isinstance(getattr(self, k), CmdArgument):
                     set_argument(k, v, v.default)
 
         # Check all required arguments exist
         for arg in required_arguments:
             if isinstance(getattr(self, arg), CmdArgument):
-                raise TypeError("Missing required argument '{}'".format(self.__class__.__name__, arg))
+                raise TypeError("Missing required argument '{}'".format(arg))
 
     @classmethod
     def get_subclasses(cls):

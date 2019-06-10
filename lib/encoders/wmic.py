@@ -9,8 +9,8 @@ class WmicEncoder(CmdEncoder):
         Encoder which runs the given command on a remote server via WMIC.
     """
     host = CmdArgument(arg_type=str, description="Hostname of the remote system")
-    username = CmdArgument(arg_type=str, default=None, description="Username to access the remote system")
-    password = CmdArgument(arg_type=str, default=None, description="Password to access the remote system")
+    username = CmdArgument(arg_type=str, default=None, required=False, description="Username to access the remote system")
+    password = CmdArgument(arg_type=str, default=None, required=False, description="Password to access the remote system")
     delay = CmdArgument(arg_type=int, default=2, description="How long to wait for the command to complete")
     output = CmdArgument(arg_type=bool, default=True, description="Whether the output of the command should be captured")
 
